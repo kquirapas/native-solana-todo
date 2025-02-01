@@ -15,6 +15,7 @@ Build
 
 ```bash
 cargo build-sbf
+```
 
 Test
 
