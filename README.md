@@ -1,6 +1,7 @@
 # native-solana-todo
 
-Reference Native Solana programming repository for my personal Blockchain Engineering trainees.
+> [!NOTE]
+> This is a reference Native Solana programming repository for my personal Blockchain Engineering trainees.
 
 # Features
 
