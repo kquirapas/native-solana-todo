@@ -218,6 +218,9 @@ pub fn process_instruction(
 
             assert!(*task.key == task_pda);
 
+            // Close the Task (PDA) account by Zeroing.
+            task_raw_bytes.fill(0);
+
             let task_lamports = task.lamports();
             let authority_lamports = authority.lamports();
 
@@ -228,10 +231,9 @@ pub fn process_instruction(
                 .unwrap();
 
             // Zero out Task (PDA) lamports.
+            //
+            // Runtime eventually cleans this account up due to 0 rent;
             **task.try_borrow_mut_lamports()? = 0;
-
-            // Close the Task (PDA) account by Zeroing.
-            task_raw_bytes.fill(0);
         }
     };
 
@@ -247,6 +249,7 @@ mod tests {
         instruction::{AccountMeta, Instruction},
         pubkey::Pubkey,
         signature::{Keypair, Signer},
+        system_program::ID as SYSTEM_PROGRAM_ID,
         transaction::Transaction,
     };
 
@@ -270,6 +273,10 @@ mod tests {
 
         (title, description, new_title, new_description)
     }
+
+    //------------------------------------------------------------
+    // Testing Happy Path
+    //------------------------------------------------------------
 
     #[tokio::test]
     async fn test_create_task() {
@@ -409,6 +416,71 @@ mod tests {
         assert_eq!(task_bump, task.bump);
     }
 
+    #[tokio::test]
+    async fn test_delete_task() {
+        let program_id = Pubkey::new_unique();
+        let id: u64 = 1;
+        let (title, description, _, _) = get_env();
+        let authority_keypair = Keypair::new();
+        let authority = authority_keypair.pubkey();
+
+        let (task_pda, task_bump) = Pubkey::find_program_address(
+            &[Task::TAG.as_bytes(), &id.to_le_bytes(), authority.as_ref()],
+            &program_id,
+        );
+
+        // Inject Account that simulates CreateTask.
+        let old_task = Task::new(id, title, description, authority, task_bump);
+        let mut account_data: Vec<u8> = Vec::new();
+        old_task.serialize(&mut account_data).unwrap();
+        let injected_task_account = Account {
+            lamports: u32::MAX as u64,
+            owner: program_id,
+            executable: false,
+            rent_epoch: Default::default(),
+            data: account_data,
+        };
+
+        // Inject account into Test.
+        let mut test = ProgramTest::default();
+        test.add_program("todo", program_id, None);
+        test.add_account(task_pda, injected_task_account);
+        let ctx = test.start_with_context().await;
+
+        let delete_task_ix = TodoInstruction::DeleteTask { id };
+
+        let mut delete_task_ix_data = Vec::new();
+        delete_task_ix.serialize(&mut delete_task_ix_data).unwrap();
+
+        let transaction = Transaction::new_signed_with_payer(
+            &[Instruction {
+                program_id,
+                accounts: vec![
+                    AccountMeta::new(authority, true),
+                    AccountMeta::new(task_pda, false),
+                ],
+                data: delete_task_ix_data.clone(),
+            }],
+            Some(&ctx.payer.pubkey()),
+            &[&authority_keypair, &ctx.payer.insecure_clone()],
+            ctx.last_blockhash,
+        );
+
+        // send transaction
+        ctx.banks_client
+            .process_transaction(transaction)
+            .await
+            .unwrap();
+
+        // confirm state
+        let task_account = ctx.banks_client.get_account(task_pda).await.unwrap();
+
+        assert!(task_account.is_none());
+    }
+
+    //------------------------------------------------------------
+    // Other Testing
+    //------------------------------------------------------------
     #[tokio::test]
     #[should_panic]
     async fn test_update_task_with_none() {
