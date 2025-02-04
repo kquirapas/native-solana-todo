@@ -11,7 +11,7 @@ use solana_program::{
     sysvar::Sysvar,
 };
 
-solana_program::declare_id!("3VG4GdkTVETFrpmfCMVoGr4G73rh4hkPrB9vQUKyPNx5");
+solana_program::declare_id!("9XW32YWst7pvbCxsLwAcLrTxgaqw3hQMHVQEuTnn81DP");
 entrypoint!(process_instruction);
 
 #[derive(BorshSerialize, BorshDeserialize)]
